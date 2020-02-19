@@ -8,7 +8,7 @@ RUN cargo install --path .
 FROM debian:buster-slim
 RUN apt-get update && apt-get install -y git
 COPY --from=builder /usr/local/cargo/bin/gitiful /usr/local/bin/gitiful
-COPY --from=builder /usr/src/gitiful/template .
+COPY --from=builder /usr/src/gitiful/templates .
 
 EXPOSE 8000
 
