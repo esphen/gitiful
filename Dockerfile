@@ -1,4 +1,4 @@
-FROM rust:1.41 as builder
+FROM rustlang/rust:nightly as builder
 
 WORKDIR /usr/src/gitiful
 COPY . .
