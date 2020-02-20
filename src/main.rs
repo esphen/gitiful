@@ -1,35 +1,56 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
-#[macro_use] extern crate rocket;
+#[macro_use]
+extern crate rocket;
 extern crate rocket_contrib;
-#[macro_use] extern crate serde_derive;
+#[macro_use]
+extern crate serde_derive;
 
 pub mod git;
 
-use git::count_repo_files;
+use git::{count_repo_files, Commit};
 use rocket_contrib::templates::Template;
+use std::collections::HashMap;
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 struct TemplateContext {
-    commits: Vec<(i64, u32)>,
+    projects: HashMap<&'static str, Vec<Commit>>,
 }
 
 #[get("/")]
 fn index() -> Template {
-    let result = count_repo_files(
-        "http://gitlab.osl.manamind.com/customers/norne.git",
-        "50fba560..origin/develop",
-        "\\.tsx?$"
-    ).unwrap();
-
-    format!("{:?}", result);
-    Template::render("index", &TemplateContext {
-        commits: result.iter().map(|item| (item.time, item.count)).collect()
-    })
+    Template::render(
+        "index",
+        &TemplateContext {
+            projects: vec![
+                (
+                    "Norne",
+                    count_repo_files(
+                        "http://gitlab.osl.manamind.com/customers/norne.git",
+                        "50fba560..origin/develop",
+                        vec!["\\.jsx?$", "\\.tsx?$"],
+                    )
+                    .unwrap(),
+                ),
+                (
+                    "Sbanken",
+                    count_repo_files(
+                        "http://gitlab.osl.manamind.com/customers/skbn.git",
+                        "952bc527..origin/develop",
+                        vec!["\\.jsx?$", "\\.tsx?$"],
+                    )
+                    .unwrap(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        },
+    )
 }
 
 fn main() {
     rocket::ignite()
         .attach(Template::fairing())
-        .mount("/", routes![index]).launch();
+        .mount("/", routes![index])
+        .launch();
 }

@@ -18,5 +18,5 @@ features = ["pattern"]
 [dependencies.rocket_contrib]
 version = "0.4.2"
 default-features = false
-features = ["handlebars_templates"]
+features = ["tera_templates"]
 
