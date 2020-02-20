@@ -1,77 +1,84 @@
 <!DOCTYPE html>
-<meta charset="utf-8">
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
 
-<script src="https://d3js.org/d3.v4.js"></script>
+    <script src="https://d3js.org/d3.v4.js"></script>
+  </head>
+  <body>
+    <h1>Typescript files</h1>
 
-<h1>Typescript files</h1>
+    <script>
+      function buildGraph(title, data) {
+        // set the dimensions and margins of the graph
+        var margin = {top: 50, right: 30, bottom: 30, left: 60},
+            width = 460 - margin.left - margin.right,
+            height = 400 - margin.top - margin.bottom;
 
-{% for project, commit_range in projects %}
-<div id="{{project}}"></div>
+        // append the svg object to the body of the page
+        var svg = d3.select('#' + title)
+          .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+          .append("g")
+            .attr("transform",
+                  "translate(" + margin.left + "," + margin.top + ")");
 
-  <script>
-    window.data = [
-        {% for commit in commit_range %}
-          {% for key, count in commit.count_set %}
-            {% if key is containing("tsx") %}
-              {
-                date: d3.timeParse('%s')({{commit.timestamp}}),
-                value: {{count.count}},
-              },
-            {% endif %}
-          {% endfor %}
-        {% endfor %}
-    ].filter(({ value }) => value);
-  </script>
+        svg.append("text")
+              .attr("x", (width / 2))
+              .attr("y", 0 - (margin.top / 2))
+              .attr("text-anchor", "middle")
+              .style("font-size", "16px")
+              .text(title);
 
-  <script>
-  // TODO set chart title to project name
+        // Add X axis --> it is a date format
+        var x = d3.scaleTime()
+          .domain(d3.extent(data, function(d) { return d.date; }))
+          .range([ 0, width ]);
+        svg.append("g")
+          .attr("transform", "translate(0," + height + ")")
+          .call(d3.axisBottom(x));
 
-  // set the dimensions and margins of the graph
-  var margin = {top: 50, right: 30, bottom: 30, left: 60},
-      width = 460 - margin.left - margin.right,
-      height = 400 - margin.top - margin.bottom;
+        // Add Y axis
+        var y = d3.scaleLinear()
+          .domain([0, d3.max(data, function(d) { return +d.value; })])
+          .range([ height, 0 ]);
+        svg.append("g")
+          .call(d3.axisLeft(y));
 
-  // append the svg object to the body of the page
-  var svg = d3.select("#{{project}}")
-    .append("svg")
-      .attr("width", width + margin.left + margin.right)
-      .attr("height", height + margin.top + margin.bottom)
-    .append("g")
-      .attr("transform",
-            "translate(" + margin.left + "," + margin.top + ")");
+        // Add the line
+        svg.append("path")
+          .datum(data)
+          .attr("fill", "none")
+          .attr("stroke", "steelblue")
+          .attr("stroke-width", 1.5)
+          .attr("d", d3.line()
+            .x(function(d) { return x(d.date) })
+            .y(function(d) { return y(d.value) })
+            )
+      }
+    </script>
 
-  svg.append("text")
-        .attr("x", (width / 2))
-        .attr("y", 0 - (margin.top / 2))
-        .attr("text-anchor", "middle")
-        .style("font-size", "16px")
-        .text("{{project}}");
+    {% for project, commit_range in projects -%}
+    <div id="{{project}}"></div>
 
-  // Add X axis --> it is a date format
-  var x = d3.scaleTime()
-    .domain(d3.extent(data, function(d) { return d.date; }))
-    .range([ 0, width ]);
-  svg.append("g")
-    .attr("transform", "translate(0," + height + ")")
-    .call(d3.axisBottom(x));
+      <script>
+        var data = [
+          {% for commit in commit_range -%}
+            {% for key, count in commit.count_set -%}
+              {% if key is containing("tsx") -%}
+          {
+            date: d3.timeParse('%s')({{commit.timestamp}}),
+            value: {{count.count}},
+          },
+              {% endif -%}
+            {% endfor -%}
+          {% endfor -%}
+        ].filter(({ value }) => value);
 
-  // Add Y axis
-  var y = d3.scaleLinear()
-    .domain([0, d3.max(data, function(d) { return +d.value; })])
-    .range([ height, 0 ]);
-  svg.append("g")
-    .call(d3.axisLeft(y));
+        buildGraph('{{project}}', data);
+      </script>
 
-  // Add the line
-  svg.append("path")
-    .datum(data)
-    .attr("fill", "none")
-    .attr("stroke", "steelblue")
-    .attr("stroke-width", 1.5)
-    .attr("d", d3.line()
-      .x(function(d) { return x(d.date) })
-      .y(function(d) { return y(d.value) })
-      )
-
-  </script>
-{% endfor %}
+    {% endfor -%}
+  </body>
+</html>
