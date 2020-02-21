@@ -1,56 +1,79 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
 #[macro_use]
-extern crate rocket;
-extern crate rocket_contrib;
-#[macro_use]
 extern crate serde_derive;
 
 pub mod git;
 
-use git::{count_repo_files, Commit};
-use rocket_contrib::templates::Template;
 use std::collections::HashMap;
+use std::thread;
 
-#[derive(Debug, Serialize)]
-struct TemplateContext {
-    projects: HashMap<&'static str, Vec<Commit>>,
+use actix_web::{error, middleware, web, App, Error, HttpResponse, HttpServer};
+use futures::channel::oneshot;
+use git::count_repo_files;
+use git::Commit;
+use tera::Tera;
+
+async fn get_repo(
+    url: &'static str,
+    range: &'static str,
+    patterns: Vec<&'static str>,
+) -> Result<Vec<Commit>, Error> {
+    let (sender, receiver) = oneshot::channel::<Vec<Commit>>();
+
+    thread::spawn(move || {
+        sender
+            .send(count_repo_files(url, range, patterns).unwrap())
+            .unwrap();
+    });
+
+    Ok(receiver.await?)
 }
 
-#[get("/")]
-fn index() -> Template {
-    Template::render(
-        "index",
-        &TemplateContext {
-            projects: vec![
-                (
-                    "Norne",
-                    count_repo_files(
-                        "http://gitlab.osl.manamind.com/customers/norne.git",
-                        "50fba560..origin/develop",
-                        vec!["\\.jsx?$", "\\.tsx?$"],
-                    )
-                    .unwrap(),
-                ),
-                (
-                    "Sbanken",
-                    count_repo_files(
-                        "http://gitlab.osl.manamind.com/customers/skbn.git",
-                        "952bc527..origin/develop",
-                        vec!["\\.jsx?$", "\\.tsx?$"],
-                    )
-                    .unwrap(),
-                ),
-            ]
+async fn index(tmpl: web::Data<tera::Tera>) -> Result<HttpResponse, Error> {
+    // Fetch all repos in parallel
+    let (norne, sbanken) = futures::join!(
+        get_repo(
+            "http://gitlab.osl.manamind.com/customers/norne.git",
+            "50fba560..origin/develop",
+            vec!["\\.jsx?$", "\\.tsx?$"],
+        ),
+        get_repo(
+            "http://gitlab.osl.manamind.com/customers/skbn.git",
+            "952bc527..origin/develop",
+            vec!["\\.jsx?$", "\\.tsx?$"],
+        ),
+    );
+
+    let mut ctx = tera::Context::new();
+    ctx.insert(
+        "projects",
+        &vec![("Norne", norne?), ("Sbanken", sbanken?)]
             .into_iter()
-            .collect(),
-        },
-    )
+            .collect::<HashMap<&'static str, Vec<Commit>>>(),
+    );
+
+    let body = tmpl
+        .render("index.tera", &ctx)
+        .map_err(|error| error::ErrorInternalServerError(error))?;
+
+    Ok(HttpResponse::Ok().content_type("text/html").body(body))
 }
 
-fn main() {
-    rocket::ignite()
-        .attach(Template::fairing())
-        .mount("/", routes![index])
-        .launch();
+#[actix_rt::main]
+async fn main() -> std::io::Result<()> {
+    std::env::set_var("RUST_LOG", "actix_web=debug");
+    env_logger::init();
+
+    HttpServer::new(|| {
+        let tera = Tera::new(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/*")).unwrap();
+
+        App::new()
+            .data(tera)
+            .wrap(middleware::Logger::default())
+            .service(web::resource("/").route(web::get().to(index)))
+    })
+    .bind("127.0.0.1:8000")?
+    .run()
+    .await
 }
