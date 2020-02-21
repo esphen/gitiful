@@ -62,7 +62,10 @@ async fn index(tmpl: web::Data<tera::Tera>) -> Result<HttpResponse, Error> {
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
-    std::env::set_var("RUST_LOG", "actix_web=debug");
+    std::env::set_var(
+        "RUST_LOG",
+        "error,actix_web=info,actix_http=info,actix_server=info",
+    );
     env_logger::init();
 
     HttpServer::new(|| {
