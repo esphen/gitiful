@@ -4,19 +4,44 @@
     <meta charset="utf-8">
     <title>TypeScript adoption</title>
 
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased; /* Chrome, Safari */
+        -moz-osx-font-smoothing: grayscale; /* Firefox */
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
+        grid-auto-rows: minmax(300px, auto);
+        padding: 20px;
+        grid-gap: 40px;
+      }
+
+      .axis path,
+      .axis line {
+        fill: none;
+        stroke: grey;
+        stroke-width: 1;
+        shape-rendering: crispEdges;
+      }
+    </style>
+
     <script src="https://d3js.org/d3.v4.js"></script>
   </head>
   <body>
     <h1>Typescript files</h1>
 
     <script>
-      function buildGraph(title, data) {
+      function buildGraph(title, data, compareData) {
         // set the dimensions and margins of the graph
-        var margin = {top: 50, right: 30, bottom: 30, left: 60},
-            width = 460 - margin.left - margin.right,
-            height = 400 - margin.top - margin.bottom;
+        var margin = {top: 50, right: 30, bottom: 30, left: 60};
+        var width = 460 - margin.left - margin.right;
+        var height = 400 - margin.top - margin.bottom;
 
-        // append the svg object to the body of the page
+        // Bootstrap the svg element into its div
         var svg = d3.select('#' + title)
           .append("svg")
             .attr("width", width + margin.left + margin.right)
@@ -37,17 +62,30 @@
           .domain(d3.extent(data, function(d) { return d.date; }))
           .range([ 0, width ]);
         svg.append("g")
+          .attr("class", "x axis")
           .attr("transform", "translate(0," + height + ")")
           .call(d3.axisBottom(x));
 
-        // Add Y axis
-        var y = d3.scaleLinear()
+        // Add left Y axis
+        var y1 = d3.scaleLinear()
           .domain([0, d3.max(data, function(d) { return +d.value; })])
           .range([ height, 0 ]);
         svg.append("g")
-          .call(d3.axisLeft(y));
+          .attr("class", "y axis")
+          .style("stroke", "steelblue")
+          .call(d3.axisLeft(y1));
 
-        // Add the line
+        // Add right Y axis
+        var y2 = d3.scaleLinear()
+          .domain([0, 100])
+          .range([ height, 0 ]);
+        svg.append("g")
+          .attr("class", "y axis")
+          .attr("transform", "translate(" + width + " ,0)")
+          .style("stroke", "red")
+          .call(d3.axisRight(y2));
+
+        // Add count line
         svg.append("path")
           .datum(data)
           .attr("fill", "none")
@@ -55,31 +93,45 @@
           .attr("stroke-width", 1.5)
           .attr("d", d3.line()
             .x(function(d) { return x(d.date) })
-            .y(function(d) { return y(d.value) })
-            )
+            .y(function(d) { return y1(d.value) })
+          );
+
+        // Add percentage line
+        svg.append("path")
+          .datum(data)
+          .attr("fill", "none")
+          .attr("stroke", "red")
+          .attr("stroke-width", 1.5)
+          .attr("d", d3.line()
+            .x(function(d) { return x(d.date) })
+            .y(function(d) { return y2(d.percentage) })
+          )
       }
     </script>
 
-    {% for project, commit_range in projects -%}
-    <div id="{{project}}"></div>
+    <div class="grid">
+      {% for project, commit_range in projects -%}
+        <div id="{{project}}"></div>
 
-      <script>
-        var data = [
-          {% for commit in commit_range -%}
-            {% for key, count in commit.count_set -%}
-              {% if key is containing("tsx") -%}
-          {
-            date: d3.timeParse('%s')({{commit.timestamp}}),
-            value: {{count.count}},
-          },
-              {% endif -%}
-            {% endfor -%}
-          {% endfor -%}
-        ].filter(({ value }) => value);
+        <script>
+          (function() {
+            let simpleData = [
+              {% for commit in commit_range -%}
+              {
+                {% set tsx_files = commit.count_set | get(key="\.tsx?$") | get(key="count") %}
+                {% set jsx_files = commit.count_set | get(key="\.jsx?$") | get(key="count") %}
+                date: d3.timeParse('%s')({{commit.timestamp}}),
+                value: {{tsx_files}},
+                percentage: {{tsx_files / jsx_files * 100}},
+              },
+              {% endfor -%}
+            ].filter(({ value }) => value);
 
-        buildGraph('{{project}}', data);
-      </script>
+            buildGraph('{{project}}', simpleData);
+          })()
+        </script>
 
-    {% endfor -%}
+      {% endfor -%}
+    </div>
   </body>
 </html>

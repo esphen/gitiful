@@ -18,17 +18,34 @@ impl Count {
 }
 
 #[derive(Default, Debug, Serialize)]
+pub struct Author {
+    pub name: Option<String>,
+    pub email: Option<String>,
+}
+
+#[derive(Default, Debug, Serialize)]
 pub struct Commit {
     pub git_ref: String,
     pub timestamp: i64,
+    pub author: Author,
     pub count_set: HashMap<String, Count>,
 }
 
 impl Commit {
-    fn new(git_ref: String, timestamp: i64) -> Commit {
+    fn add_pattern_matches(&mut self, pattern: String, count: Count) {
+        self.count_set.insert(pattern, count);
+    }
+}
+
+impl<'a> From<git2::Commit<'a>> for Commit {
+    fn from(commit: git2::Commit) -> Self {
         Commit {
-            git_ref,
-            timestamp,
+            git_ref: format!("{}", commit.id()),
+            timestamp: commit.time().seconds(),
+            author: Author {
+                name: commit.author().name().map(|s| format!("{}", s)),
+                email: commit.author().email().map(|s| format!("{}", s)),
+            },
             count_set: HashMap::new(),
         }
     }
@@ -60,11 +77,16 @@ pub fn count_repo_files(
             let commit = repo.find_commit(git_ref).unwrap();
             let tree = commit.tree().unwrap();
 
-            let mut commit = Commit::new(format!("{}", git_ref), commit.time().seconds());
+            // Skip merge commits
+            if commit.parent_count() > 1 {
+                continue;
+            }
+
+            let mut commit = Commit::from(commit);
 
             for pattern in patterns.iter() {
                 let mut count = 0;
-                tree.walk(TreeWalkMode::PreOrder, |_, entry| {
+                tree.walk(TreeWalkMode::PostOrder, |_, entry| {
                     if let Some(name) = entry.name() {
                         if name.contains(pattern) {
                             count += 1;
@@ -74,7 +96,7 @@ pub fn count_repo_files(
                 })
                 .unwrap();
 
-                commit.count_set.insert(
+                commit.add_pattern_matches(
                     format!("{}", pattern.as_str()),
                     Count::new(format!("{}", pattern.as_str()), count),
                 );
